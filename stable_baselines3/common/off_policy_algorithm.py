@@ -72,6 +72,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
     :param remove_time_limit_termination: Remove terminations (dones) that are due to time limit.
         See https://github.com/hill-a/stable-baselines/issues/863
     :param supported_action_spaces: The action spaces supported by the algorithm.
+    :param exploration_policy: External exploration policy.
     """
 
     def __init__(
@@ -105,6 +106,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         sde_support: bool = True,
         remove_time_limit_termination: bool = False,
         supported_action_spaces: Optional[Tuple[gym.spaces.Space, ...]] = None,
+        exploration_policy: Optional[ExplorationPolicy] = None
     ):
 
         super(OffPolicyAlgorithm, self).__init__(
@@ -137,6 +139,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             replay_buffer_kwargs = {}
         self.replay_buffer_kwargs = replay_buffer_kwargs
         self._episode_storage = None
+        self.exploration_policy = exploration_policy
 
         # Remove terminations (dones) that are due to time limit
         # see https://github.com/hill-a/stable-baselines/issues/863
@@ -411,10 +414,17 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             # Warmup phase
             unscaled_action = np.array([self.action_space.sample() for _ in range(n_envs)])
         else:
-            # Note: when using continuous actions,
-            # we assume that the policy uses tanh to scale the action
-            # We use non-deterministic action in the case of SAC, for TD3, it does not matter
-            unscaled_action, _ = self.predict(self._last_obs, deterministic=False)
+            if self.exploration_policy is not None:
+                unscaled_action = self.exploration_policy.predict(
+                    self._last_obs, deterministic=False
+                )
+                # TODO remove this later!!!
+                assert self.action_space.contains(unscaled_action)
+            else:
+                # Note: when using continuous actions,
+                # we assume that the policy uses tanh to scale the action
+                # We use non-deterministic action in the case of SAC, for TD3, it does not matter
+                unscaled_action, _ = self.predict(self._last_obs, deterministic=False)
 
         # Rescale the action from [low, high] to [-1, 1]
         if isinstance(self.action_space, gym.spaces.Box):
