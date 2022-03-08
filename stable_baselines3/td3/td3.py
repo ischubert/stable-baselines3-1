@@ -10,6 +10,7 @@ from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import polyak_update
+from stable_baselines3.common.exploration_policies import ExplorationPolicy
 from stable_baselines3.td3.policies import TD3Policy
 
 
@@ -57,6 +58,7 @@ class TD3(OffPolicyAlgorithm):
     :param seed: Seed for the pseudo random generators
     :param device: Device (cpu, cuda, ...) on which the code should be run.
         Setting it to auto, the code will be run on the GPU if possible.
+    :param exploration_policy: External exploration policy.
     :param _init_setup_model: Whether or not to build the network at the creation of the instance
     """
 
@@ -85,6 +87,7 @@ class TD3(OffPolicyAlgorithm):
         verbose: int = 0,
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
+        exploration_policy: Optional[ExplorationPolicy] = None,
         _init_setup_model: bool = True,
     ):
 
@@ -113,6 +116,7 @@ class TD3(OffPolicyAlgorithm):
             optimize_memory_usage=optimize_memory_usage,
             supported_action_spaces=(gym.spaces.Box),
             support_multi_env=True,
+            exploration_policy=exploration_policy
         )
 
         self.policy_delay = policy_delay

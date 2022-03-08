@@ -10,6 +10,7 @@ from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
 from stable_baselines3.common.utils import polyak_update
+from stable_baselines3.common.exploration_policies import ExplorationPolicy
 from stable_baselines3.sac.policies import SACPolicy
 
 
@@ -69,6 +70,7 @@ class SAC(OffPolicyAlgorithm):
     :param seed: Seed for the pseudo random generators
     :param device: Device (cpu, cuda, ...) on which the code should be run.
         Setting it to auto, the code will be run on the GPU if possible.
+    :param exploration_policy: External exploration policy.
     :param _init_setup_model: Whether or not to build the network at the creation of the instance
     """
 
@@ -100,6 +102,7 @@ class SAC(OffPolicyAlgorithm):
         verbose: int = 0,
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
+        exploration_policy: Optional[ExplorationPolicy] = None,
         _init_setup_model: bool = True,
     ):
 
@@ -129,6 +132,7 @@ class SAC(OffPolicyAlgorithm):
             use_sde_at_warmup=use_sde_at_warmup,
             optimize_memory_usage=optimize_memory_usage,
             supported_action_spaces=(gym.spaces.Box),
+            exploration_policy=exploration_policy,
             support_multi_env=True,
         )
 

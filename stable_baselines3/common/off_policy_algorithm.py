@@ -18,6 +18,7 @@ from stable_baselines3.common.save_util import load_from_pkl, save_to_pkl
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, RolloutReturn, Schedule, TrainFreq, TrainFrequencyUnit
 from stable_baselines3.common.utils import safe_mean, should_collect_more_steps
 from stable_baselines3.common.vec_env import VecEnv
+from stable_baselines3.common.exploration_policies import ExplorationPolicy
 from stable_baselines3.her.her_replay_buffer import HerReplayBuffer, VecHerReplayBuffer
 
 
@@ -418,8 +419,6 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                 unscaled_action = self.exploration_policy.predict(
                     self._last_obs, deterministic=False
                 )
-                # TODO remove this later!!!
-                assert self.action_space.contains(unscaled_action)
             else:
                 # Note: when using continuous actions,
                 # we assume that the policy uses tanh to scale the action

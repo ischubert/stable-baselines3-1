@@ -6,6 +6,7 @@ from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.noise import ActionNoise
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.type_aliases import GymEnv, MaybeCallback, Schedule
+from stable_baselines3.common.exploration_policies import ExplorationPolicy
 from stable_baselines3.td3.policies import TD3Policy
 from stable_baselines3.td3.td3 import TD3
 
@@ -50,6 +51,7 @@ class DDPG(TD3):
     :param seed: Seed for the pseudo random generators
     :param device: Device (cpu, cuda, ...) on which the code should be run.
         Setting it to auto, the code will be run on the GPU if possible.
+    :param exploration_policy: External exploration policy.
     :param _init_setup_model: Whether or not to build the network at the creation of the instance
     """
 
@@ -75,6 +77,7 @@ class DDPG(TD3):
         verbose: int = 0,
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
+        exploration_policy: Optional[ExplorationPolicy] = None,
         _init_setup_model: bool = True,
     ):
 
@@ -104,6 +107,7 @@ class DDPG(TD3):
             policy_delay=1,
             target_noise_clip=0.0,
             target_policy_noise=0.1,
+            exploration_policy=exploration_policy,
             _init_setup_model=False,
         )
 
