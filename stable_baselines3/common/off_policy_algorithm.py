@@ -419,7 +419,9 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                 unscaled_action = self.exploration_policy.predict(
                     self._last_obs, deterministic=False
                 )
-            else:
+            # the exploration policy can decide to not return anything, in which
+            # case it is up to the RL algorithm to determine the next action
+            if self.exploration_policy is None or unscaled_action is None:
                 # Note: when using continuous actions,
                 # we assume that the policy uses tanh to scale the action
                 # We use non-deterministic action in the case of SAC, for TD3, it does not matter

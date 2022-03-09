@@ -8,7 +8,8 @@ class ExplorationPolicy():
     """
     def predict(self, observation, deterministic=False):
         """
-        Return action based on observation
+        Return action based on observation. Action can be None, in which case the
+        decision goes back to the RL algorithm
         """
         raise NotImplementedError
 
