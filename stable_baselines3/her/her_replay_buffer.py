@@ -347,6 +347,16 @@ class HerReplayBuffer(DictReplayBuffer):
             ]
         )
 
+        # # For illustration purposes: info is saved to the transition
+        # # during which it is produced. If the state at the beginning
+        # # of the transition is saved to info["observation"], the
+        # # following relation holds:
+        # assert np.all(
+        #     transitions["observation"].reshape(-1) == np.array(
+        #         [info[0]["observation"]["observation"] for info in transitions["info"]]
+        #     ).reshape(-1)
+        # )
+
         # Edge case: episode of one timesteps with the future strategy
         # no virtual transition can be created
         if len(her_indices) > 0:
