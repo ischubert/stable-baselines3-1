@@ -67,6 +67,8 @@ class HerReplayBuffer(DictReplayBuffer):
     :param handle_timeout_termination: Handle timeout termination (due to timelimit)
         separately and treat the task as infinite horizon task.
         https://github.com/DLR-RM/stable-baselines3/issues/284
+    :param modify_goal: In some cases, the replay goal is dependend on state.
+        In these cases set modify_goal=True
     """
 
     def __init__(
@@ -80,6 +82,7 @@ class HerReplayBuffer(DictReplayBuffer):
         goal_selection_strategy: Union[GoalSelectionStrategy, str] = "future",
         online_sampling: bool = True,
         handle_timeout_termination: bool = True,
+        modify_goal: bool = False
     ):
 
         super(HerReplayBuffer, self).__init__(buffer_size, env.observation_space, env.action_space, device, env.num_envs)
@@ -117,6 +120,8 @@ class HerReplayBuffer(DictReplayBuffer):
         # Handle timeouts termination properly if needed
         # see https://github.com/DLR-RM/stable-baselines3/issues/284
         self.handle_timeout_termination = handle_timeout_termination
+
+        self.modify_goal = modify_goal
 
         # buffer with episodes
         # number of episodes which can be stored until buffer size is reached
@@ -361,7 +366,7 @@ class HerReplayBuffer(DictReplayBuffer):
         # no virtual transition can be created
         if len(her_indices) > 0:
             # Vectorized computation of the new reward
-            transitions["reward"][her_indices, 0] = self.env.env_method(
+            compute_reward_returns = self.env.env_method(
                 "compute_reward",
                 # the new state depends on the previous state and action
                 # s_{t+1} = f(s_t, a_t)
@@ -375,6 +380,12 @@ class HerReplayBuffer(DictReplayBuffer):
                 transitions["info"][her_indices, 0],
                 indices=0,  # only call method for one env
             )[0]
+            if self.modify_goal:
+                transitions["reward"][her_indices, 0] = compute_reward_returns[0]
+                transitions["desired_goal"][her_indices, 0] = compute_reward_returns[1]
+            else:
+                transitions["reward"][her_indices, 0] = compute_reward_returns
+
         # concatenate observation with (desired) goal
         observations = self._normalize_obs(transitions, maybe_vec_env)
 
