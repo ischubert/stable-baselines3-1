@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch as th
 
-from stable_baselines3.common.buffers import DictReplayBuffer
+from stable_baselines3.common.buffers import ReplayBuffer, DictReplayBuffer
 from stable_baselines3.common.preprocessing import get_obs_shape
 from stable_baselines3.common.type_aliases import DictReplayBufferSamples
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
@@ -64,11 +64,16 @@ class HerReplayBuffer(DictReplayBuffer):
     :param device: PyTorch device
     :param n_sampled_goal: Number of virtual transitions to create per real transition,
         by sampling new goals.
+    :param n_sampled_goal_preselection: Number of goals sampled for preselection
+        if goal_selection_strategy is PAST_DESIRED_SUCCESS
+    :param desired_goal_buffer_size: Size of the buffer storing desired goals
+        if goal_selection_strategy is PAST_DESIRED or PAST_DESIRED_SUCCESS
     :param handle_timeout_termination: Handle timeout termination (due to timelimit)
         separately and treat the task as infinite horizon task.
         https://github.com/DLR-RM/stable-baselines3/issues/284
     :param modify_goal: In some cases, the replay goal is dependend on state.
         In these cases set modify_goal=True
+    :param create_desired_goal_storage: Create a desired_goal_storage
     """
 
     def __init__(
@@ -79,6 +84,8 @@ class HerReplayBuffer(DictReplayBuffer):
         replay_buffer: Optional[DictReplayBuffer] = None,
         max_episode_length: Optional[int] = None,
         n_sampled_goal: int = 4,
+        n_sampled_goal_preselection: Optional[int] = None,
+        desired_goal_buffer_size: int = int(1e5),
         goal_selection_strategy: Union[GoalSelectionStrategy, str] = "future",
         online_sampling: bool = True,
         handle_timeout_termination: bool = True,
@@ -98,7 +105,11 @@ class HerReplayBuffer(DictReplayBuffer):
             self.goal_selection_strategy, GoalSelectionStrategy
         ), f"Invalid goal selection strategy, please use one of {list(GoalSelectionStrategy)}"
 
+        if self.goal_selection_strategy in [GoalSelectionStrategy.PAST_DESIRED, GoalSelectionStrategy.PAST_DESIRED_SUCCESS]:
+            assert not online_sampling, "Selected GoalSelectionStrategy not implemented for online sampling"
+
         self.n_sampled_goal = n_sampled_goal
+        self.n_sampled_goal_preselection = n_sampled_goal_preselection
         # if we sample her transitions online use custom replay buffer
         self.online_sampling = online_sampling
         # compute ratio between HER replays and regular replays in percent for online HER sampling
@@ -108,6 +119,20 @@ class HerReplayBuffer(DictReplayBuffer):
         # storage for transitions of current episode for offline sampling
         # for online sampling, it replaces the "classic" replay buffer completely
         her_buffer_size = buffer_size if online_sampling else self.max_episode_length
+
+        # For GoalSelectionStrategy.PAST_DESIRED, and GoalSelectionStrategy.PAST_DESIRED_SUCCESS,
+        # add basic buffer to save the desired_goal of each episode
+        if self.goal_selection_strategy in [
+            GoalSelectionStrategy.PAST_DESIRED, GoalSelectionStrategy.PAST_DESIRED_SUCCESS
+        ]:
+            self.desired_goal_storage = ReplayBuffer(
+                buffer_size=desired_goal_buffer_size,
+                observation_space=env.observation_space["desired_goal"],
+                action_space=env.action_space,
+                device=device,
+                n_envs=env.num_envs,
+                handle_timeout_termination=False
+            )
 
         self.env = env
         self.buffer_size = her_buffer_size
@@ -130,20 +155,23 @@ class HerReplayBuffer(DictReplayBuffer):
         # Counter to prevent overflow
         self.episode_steps = 0
 
-        # Get shape of observation and goal (usually the same)
+        # Get shape of observation and goal
+        # This is the general case in which achieved_goal and desired_goal are elements of different spaces
         self.obs_shape = get_obs_shape(self.env.observation_space.spaces["observation"])
-        self.goal_shape = get_obs_shape(self.env.observation_space.spaces["achieved_goal"])
+        self.achieved_goal_shape = get_obs_shape(self.env.observation_space.spaces["achieved_goal"])
+        self.desired_goal_shape = get_obs_shape(self.env.observation_space.spaces["desired_goal"])
+
 
         # input dimensions for buffer initialization
         input_shape = {
             "observation": (1,) + self.obs_shape,
-            "achieved_goal": (1,) + self.goal_shape,
-            "desired_goal": (1,) + self.goal_shape,
+            "achieved_goal": (1,) + self.achieved_goal_shape,
+            "desired_goal": (1,) + self.desired_goal_shape,
             "action": (self.action_dim,),
             "reward": (1,),
             "next_obs": (1,) + self.obs_shape,
-            "next_achieved_goal": (1,) + self.goal_shape,
-            "next_desired_goal": (1,) + self.goal_shape,
+            "next_achieved_goal": (1,) + self.achieved_goal_shape,
+            "next_desired_goal": (1,) + self.desired_goal_shape,
             "done": (1,),
         }
         self._observation_keys = ["observation", "achieved_goal", "desired_goal"]
@@ -303,10 +331,19 @@ class HerReplayBuffer(DictReplayBuffer):
         else:
             assert maybe_vec_env is None, "Transitions must be stored unnormalized in the replay buffer"
             assert n_sampled_goal is not None, "No n_sampled_goal specified for offline sampling of HER transitions"
+            if self.goal_selection_strategy == GoalSelectionStrategy.PAST_DESIRED_SUCCESS:
+                assert self.n_sampled_goal_preselection is not None, "Using PAST_DESIRED_SUCCESS strategy, but n_sampled_goal_preselection not given"
+                n_sampled_goal_preselection = self.n_sampled_goal_preselection
+            else:
+
+                assert self.n_sampled_goal_preselection is None, "Not using PAST_DESIRED_SUCCESS strategy, but n_sampled_goal_preselection given"
+                # In this case there is no preselection
+                n_sampled_goal_preselection = n_sampled_goal
+
             # Offline sampling: there is only one episode stored
             episode_length = self.episode_lengths[0]
-            # we sample n_sampled_goal per timestep in the episode (only one is stored).
-            episode_indices = np.tile(0, (episode_length * n_sampled_goal))
+            # we sample n_sampled_goal_preselection per timestep in the episode (only one is stored).
+            episode_indices = np.tile(0, (episode_length * n_sampled_goal_preselection))
             # we only sample virtual transitions
             # as real transitions are already stored in the replay buffer
             her_indices = np.arange(len(episode_indices))
@@ -330,10 +367,10 @@ class HerReplayBuffer(DictReplayBuffer):
                 # no virtual transitions are created in that case
                 return {}, {}, np.zeros(0), np.zeros(0)
             else:
-                # Repeat every transition index n_sampled_goals times
-                # to sample n_sampled_goal per timestep in the episode (only one is stored).
+                # Repeat every transition index n_sampled_goal_preselection times
+                # to sample n_sampled_goal_preselection per timestep in the episode (only one is stored).
                 # Now with the corrected episode length when using "future" strategy
-                transitions_indices = np.tile(np.arange(ep_lengths[0]), n_sampled_goal)
+                transitions_indices = np.tile(np.arange(ep_lengths[0]), n_sampled_goal_preselection)
                 episode_indices = episode_indices[transitions_indices]
                 her_indices = np.arange(len(episode_indices))
 
@@ -341,7 +378,16 @@ class HerReplayBuffer(DictReplayBuffer):
         transitions = {key: self._buffer[key][episode_indices, transitions_indices].copy() for key in self._buffer.keys()}
 
         # sample new desired goals and relabel the transitions
-        new_goals = self.sample_goals(episode_indices, her_indices, transitions_indices)
+        if self.goal_selection_strategy in [
+            GoalSelectionStrategy.PAST_DESIRED,
+            GoalSelectionStrategy.PAST_DESIRED_SUCCESS
+        ]:
+            # In this case, simply sample len(her_indices) goals (stored as observations) from self.desired_goal_storage
+            # TODO the expand_dims solution here won't generalize to multiple environments
+            new_goals = np.expand_dims(self.desired_goal_storage.sample(len(her_indices)).observations, axis=1)
+        else:
+            new_goals = self.sample_goals(episode_indices, her_indices, transitions_indices)
+
         transitions["desired_goal"][her_indices] = new_goals
 
         # Convert info buffer to numpy array
@@ -385,6 +431,49 @@ class HerReplayBuffer(DictReplayBuffer):
                 transitions["desired_goal"][her_indices, 0] = compute_reward_returns[1]
             else:
                 transitions["reward"][her_indices, 0] = compute_reward_returns
+
+        for key in transitions.keys():
+            if self.goal_selection_strategy == GoalSelectionStrategy.FUTURE:
+                assert len(transitions[key]) == (episode_length - 1)*n_sampled_goal_preselection
+            else:
+                assert len(transitions[key]) == episode_length*n_sampled_goal_preselection
+        
+        # When using GoalSelectionStrategy.PAST_DESIRED_SUCCESS, this selection is filtered again
+        if self.goal_selection_strategy == GoalSelectionStrategy.PAST_DESIRED_SUCCESS:
+            assert n_sampled_goal < n_sampled_goal_preselection, "n_sampled_goal must be smaller than preselection"
+            assert transitions['reward'].shape == (episode_length*n_sampled_goal_preselection, 1)
+            reward_per_episode = np.sum(
+                transitions['reward'].reshape(n_sampled_goal_preselection, episode_length), axis=-1
+            )
+            # returns unique reward_per_episode (sorted in ascending order)
+            uniques, unique_indices = np.unique(reward_per_episode, return_index=True)
+
+            if len(uniques) >= n_sampled_goal:
+                # preferably, select n_sampled_goal largest unique
+                winner_episodes = unique_indices[-n_sampled_goal:]
+            else:
+                # if not possible, select n_sampled_goal largest
+                winner_episodes = np.argsort(reward_per_episode)[-n_sampled_goal:]
+
+            keep_mask = np.zeros(n_sampled_goal_preselection, dtype=bool)
+            keep_mask[winner_episodes] = True
+            keep_mask = np.repeat(keep_mask, episode_length)
+            # TODO control using verbosity flag
+            print(f'Unique episode rewards on preselection: {len(uniques)}')
+            print(f'Mean replay episode reward before selection: {np.mean(reward_per_episode)}')
+            
+            for key in transitions.keys():
+                transitions[key] = transitions[key][keep_mask]
+
+            print(f'Mean replay episode reward after selection: {np.sum(transitions["reward"])/n_sampled_goal}')
+        else:
+            assert n_sampled_goal_preselection == n_sampled_goal
+        
+        for key in transitions.keys():
+            if self.goal_selection_strategy == GoalSelectionStrategy.FUTURE:
+                assert len(transitions[key]) == (episode_length-1)*n_sampled_goal
+            else:
+                assert len(transitions[key]) == episode_length*n_sampled_goal
 
         # concatenate observation with (desired) goal
         observations = self._normalize_obs(transitions, maybe_vec_env)
@@ -465,6 +554,17 @@ class HerReplayBuffer(DictReplayBuffer):
         if done or self.episode_steps >= self.max_episode_length:
             self.store_episode()
             if not self.online_sampling:
+                # If past_desired strategy is used:
+                if self.goal_selection_strategy in [
+                    GoalSelectionStrategy.PAST_DESIRED,
+                    GoalSelectionStrategy.PAST_DESIRED_SUCCESS
+                ]:
+                    # Add latest desired_goal to self.desired_goal_storage
+                    self.desired_goal_storage.add(
+                        next_obs["desired_goal"],
+                        None, None, None, None, None
+                    )
+
                 # sample virtual transitions and store them in replay buffer
                 self._sample_her_transitions()
                 # clear storage for current episode
