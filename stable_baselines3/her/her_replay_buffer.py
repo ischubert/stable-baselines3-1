@@ -382,9 +382,13 @@ class HerReplayBuffer(DictReplayBuffer):
             GoalSelectionStrategy.PAST_DESIRED,
             GoalSelectionStrategy.PAST_DESIRED_SUCCESS
         ]:
-            # In this case, simply sample len(her_indices) goals (stored as observations) from self.desired_goal_storage
+            # In this case, simply sample len(her_indices) goals (stored as observations)
+            # from self.desired_goal_storage
             # TODO the expand_dims solution here won't generalize to multiple environments
-            new_goals = np.expand_dims(self.desired_goal_storage.sample(len(her_indices)).observations, axis=1)
+            new_goals = np.expand_dims(
+                self.desired_goal_storage.sample(len(her_indices)).observations,
+                axis=1
+            )
         else:
             new_goals = self.sample_goals(episode_indices, her_indices, transitions_indices)
 
@@ -437,7 +441,7 @@ class HerReplayBuffer(DictReplayBuffer):
                 assert len(transitions[key]) == (episode_length - 1)*n_sampled_goal_preselection
             else:
                 assert len(transitions[key]) == episode_length*n_sampled_goal_preselection
-        
+
         # When using GoalSelectionStrategy.PAST_DESIRED_SUCCESS, this selection is filtered again
         if self.goal_selection_strategy == GoalSelectionStrategy.PAST_DESIRED_SUCCESS:
             assert n_sampled_goal < n_sampled_goal_preselection, "n_sampled_goal must be smaller than preselection"
