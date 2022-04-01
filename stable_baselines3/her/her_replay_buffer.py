@@ -386,7 +386,7 @@ class HerReplayBuffer(DictReplayBuffer):
             # from self.desired_goal_storage
             # TODO the expand_dims solution here won't generalize to multiple environments
             new_goals = np.expand_dims(
-                self.desired_goal_storage.sample(len(her_indices)).observations,
+                self.desired_goal_storage.sample(len(her_indices)).observations.cpu(),
                 axis=1
             )
         else:
