@@ -385,7 +385,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                     self.train(batch_size=self.batch_size, gradient_steps=gradient_steps)
                     total_time_spent_for_training += (time.time()-time0)
 
-            if self.num_timesteps % 10 == 0:
+            if self.num_timesteps % 250 == 0:
                 print("Time spent on rollouts:", total_time_spent_for_rollouts)
                 print("----Time spent on resampling:", self.replay_buffer.total_time_spent_for_sample_transition)
                 print("--------Time spent on planning:", self.env.envs[0].env.goal_object.plan_policy.total_time_spent_for_planning)
