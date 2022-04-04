@@ -1,3 +1,4 @@
+import time
 import io
 import pathlib
 import time
@@ -356,7 +357,10 @@ class OffPolicyAlgorithm(BaseAlgorithm):
 
         callback.on_training_start(locals(), globals())
 
+        total_time_spent_for_rollouts = 0
+        total_time_spent_for_training = 0
         while self.num_timesteps < total_timesteps:
+            time0 = time.time()
             rollout = self.collect_rollouts(
                 self.env,
                 train_freq=self.train_freq,
@@ -366,6 +370,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                 replay_buffer=self.replay_buffer,
                 log_interval=log_interval,
             )
+            total_time_spent_for_rollouts += (time.time() - time0)
 
             if rollout.continue_training is False:
                 break
@@ -376,7 +381,15 @@ class OffPolicyAlgorithm(BaseAlgorithm):
                 gradient_steps = self.gradient_steps if self.gradient_steps >= 0 else rollout.episode_timesteps
                 # Special case when the user passes `gradient_steps=0`
                 if gradient_steps > 0:
+                    time0 = time.time()
                     self.train(batch_size=self.batch_size, gradient_steps=gradient_steps)
+                    total_time_spent_for_training += (time.time()-time0)
+
+            if self.num_timesteps % 10 == 0:
+                print("Time spent on rollouts:", total_time_spent_for_rollouts)
+                print("----Time spent on resampling:", self.replay_buffer.total_time_spent_for_sample_transition)
+                print("--------Time spent on planning:", self.env.envs[0].env.goal_object.plan_policy.total_time_spent_for_planning)
+                print("Time spent on training:", total_time_spent_for_training)
 
         callback.on_training_end()
 
