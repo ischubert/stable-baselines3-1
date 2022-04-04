@@ -184,7 +184,7 @@ class HerReplayBuffer(DictReplayBuffer):
         self.info_buffer = [deque(maxlen=self.max_episode_length) for _ in range(self.max_episode_stored)]
         # episode length storage, needed for episodes which has less steps than the maximum length
         self.episode_lengths = np.zeros(self.max_episode_stored, dtype=np.int64)
-        self.total_time_spent_for_sample_transition = 0
+        # self.total_time_spent_for_sample_transition = 0
 
     def __getstate__(self) -> Dict[str, Any]:
         """
@@ -572,9 +572,9 @@ class HerReplayBuffer(DictReplayBuffer):
                     )
 
                 # sample virtual transitions and store them in replay buffer
-                time0 = time.time()
+                # time0 = time.time()
                 self._sample_her_transitions()
-                self.total_time_spent_for_sample_transition += (time.time()-time0)
+                # self.total_time_spent_for_sample_transition += (time.time()-time0)
                 # clear storage for current episode
                 self.reset()
 
