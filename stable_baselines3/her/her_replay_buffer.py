@@ -438,11 +438,12 @@ class HerReplayBuffer(DictReplayBuffer):
             else:
                 transitions["reward"][her_indices, 0] = compute_reward_returns
 
-        for key in transitions.keys():
-            if self.goal_selection_strategy == GoalSelectionStrategy.FUTURE:
-                assert len(transitions[key]) == (episode_length - 1)*n_sampled_goal_preselection
-            else:
-                assert len(transitions[key]) == episode_length*n_sampled_goal_preselection
+        if not online_sampling:
+            for key in transitions.keys():
+                if self.goal_selection_strategy == GoalSelectionStrategy.FUTURE:
+                    assert len(transitions[key]) == (episode_length - 1)*n_sampled_goal_preselection
+                else:
+                    assert len(transitions[key]) == episode_length*n_sampled_goal_preselection
 
         # When using GoalSelectionStrategy.PAST_DESIRED_SUCCESS, this selection is filtered again
         if self.goal_selection_strategy == GoalSelectionStrategy.PAST_DESIRED_SUCCESS:
@@ -467,19 +468,21 @@ class HerReplayBuffer(DictReplayBuffer):
             # TODO control using verbosity flag
             print(f'Unique episode rewards on preselection: {len(uniques)}')
             print(f'Mean replay episode reward before selection: {np.mean(reward_per_episode)}')
-            
+
             for key in transitions.keys():
                 transitions[key] = transitions[key][keep_mask]
 
             print(f'Mean replay episode reward after selection: {np.sum(transitions["reward"])/n_sampled_goal}')
         else:
-            assert n_sampled_goal_preselection == n_sampled_goal
-        
-        for key in transitions.keys():
-            if self.goal_selection_strategy == GoalSelectionStrategy.FUTURE:
-                assert len(transitions[key]) == (episode_length-1)*n_sampled_goal
-            else:
-                assert len(transitions[key]) == episode_length*n_sampled_goal
+            if not online_sampling:
+                assert n_sampled_goal_preselection == n_sampled_goal
+
+        if not online_sampling:
+            for key in transitions.keys():
+                if self.goal_selection_strategy == GoalSelectionStrategy.FUTURE:
+                    assert len(transitions[key]) == (episode_length-1)*n_sampled_goal
+                else:
+                    assert len(transitions[key]) == episode_length*n_sampled_goal
 
         # concatenate observation with (desired) goal
         observations = self._normalize_obs(transitions, maybe_vec_env)
