@@ -75,6 +75,8 @@ class HerReplayBuffer(DictReplayBuffer):
     :param modify_goal: In some cases, the replay goal is dependend on state.
         In these cases set modify_goal=True
     :param create_desired_goal_storage: Create a desired_goal_storage
+    :param use_additional_info_buffer: Buffer info related to desired goal as well
+        Must be set if desired_goal selection strategy is used
     """
 
     def __init__(
@@ -90,7 +92,8 @@ class HerReplayBuffer(DictReplayBuffer):
         goal_selection_strategy: Union[GoalSelectionStrategy, str] = "future",
         online_sampling: bool = True,
         handle_timeout_termination: bool = True,
-        modify_goal: bool = False
+        modify_goal: bool = False,
+        use_additional_info_buffer: Optional[bool] = None
     ):
 
         super(HerReplayBuffer, self).__init__(buffer_size, env.observation_space, env.action_space, device, env.num_envs)
@@ -126,13 +129,15 @@ class HerReplayBuffer(DictReplayBuffer):
         if self.goal_selection_strategy in [
             GoalSelectionStrategy.PAST_DESIRED, GoalSelectionStrategy.PAST_DESIRED_SUCCESS
         ]:
+            assert use_additional_info_buffer in [True, False], "Must be set if desired_goal selection strategy is used"
             self.desired_goal_storage = ReplayBuffer(
                 buffer_size=desired_goal_buffer_size,
                 observation_space=env.observation_space["desired_goal"],
                 action_space=env.action_space,
                 device=device,
                 n_envs=env.num_envs,
-                handle_timeout_termination=False
+                handle_timeout_termination=False,
+                use_additional_info_buffer=use_additional_info_buffer
             )
 
         self.env = env
@@ -387,8 +392,12 @@ class HerReplayBuffer(DictReplayBuffer):
             # In this case, simply sample len(her_indices) goals (stored as observations)
             # from self.desired_goal_storage
             # TODO the expand_dims solution here won't generalize to multiple environments
+            if self.desired_goal_storage.use_additional_info_buffer:
+                new_obs, new_info = self.desired_goal_storage.sample(len(her_indices))
+            else:
+                new_obs = self.desired_goal_storage.sample(len(her_indices))
             new_goals = np.expand_dims(
-                self.desired_goal_storage.sample(len(her_indices)).observations.cpu(),
+                new_obs.observations.cpu(),
                 axis=1
             )
         else:
@@ -403,6 +412,13 @@ class HerReplayBuffer(DictReplayBuffer):
                 for episode_idx, transition_idx in zip(episode_indices, transitions_indices)
             ]
         )
+
+        # maybe overwrite info buffer with info belonging to desired goal
+        if self.goal_selection_strategy in [
+            GoalSelectionStrategy.PAST_DESIRED,
+            GoalSelectionStrategy.PAST_DESIRED_SUCCESS
+        ] and self.desired_goal_storage.use_additional_info_buffer:
+            transitions["info"][her_indices] = np.array(new_info)
 
         # # For illustration purposes: info is saved to the transition
         # # during which it is produced. If the state at the beginning
@@ -571,7 +587,8 @@ class HerReplayBuffer(DictReplayBuffer):
                     # Add latest desired_goal to self.desired_goal_storage
                     self.desired_goal_storage.add(
                         next_obs["desired_goal"],
-                        None, None, None, None, None
+                        None, None, None, None,
+                        infos # Maybe store info as well
                     )
 
                 # sample virtual transitions and store them in replay buffer

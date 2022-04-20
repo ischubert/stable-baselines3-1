@@ -167,6 +167,7 @@ class ReplayBuffer(BaseBuffer):
     :param handle_timeout_termination: Handle timeout termination (due to timelimit)
         separately and treat the task as infinite horizon task.
         https://github.com/DLR-RM/stable-baselines3/issues/284
+    "param use_additional_info_buffer: Store info in an additional info buffer
     """
 
     def __init__(
@@ -178,6 +179,7 @@ class ReplayBuffer(BaseBuffer):
         n_envs: int = 1,
         optimize_memory_usage: bool = False,
         handle_timeout_termination: bool = True,
+        use_additional_info_buffer=False
     ):
         super(ReplayBuffer, self).__init__(buffer_size, observation_space, action_space, device, n_envs=n_envs)
 
@@ -206,6 +208,11 @@ class ReplayBuffer(BaseBuffer):
         # see https://github.com/DLR-RM/stable-baselines3/issues/284
         self.handle_timeout_termination = handle_timeout_termination
         self.timeouts = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+
+        self.use_additional_info_buffer = use_additional_info_buffer
+        if self.use_additional_info_buffer:
+            assert self.n_envs == 1, "Info buffer not implemented for multiple envs"
+            self.additional_info_buffer = [None for _ in range(buffer_size)]
 
         if psutil is not None:
             total_memory_usage = self.observations.nbytes + self.actions.nbytes + self.rewards.nbytes + self.dones.nbytes
@@ -253,6 +260,9 @@ class ReplayBuffer(BaseBuffer):
         self.actions[self.pos] = np.array(action).copy()
         self.rewards[self.pos] = np.array(reward).copy()
         self.dones[self.pos] = np.array(done).copy()
+
+        if self.use_additional_info_buffer:
+            self.additional_info_buffer[self.pos] = infos.copy()
 
         if self.handle_timeout_termination:
             self.timeouts[self.pos] = np.array([info.get("TimeLimit.truncated", False) for info in infos])
@@ -302,7 +312,12 @@ class ReplayBuffer(BaseBuffer):
             (self.dones[batch_inds, env_indices] * (1 - self.timeouts[batch_inds, env_indices])).reshape(-1, 1),
             self._normalize_reward(self.rewards[batch_inds, env_indices].reshape(-1, 1), env),
         )
-        return ReplayBufferSamples(*tuple(map(self.to_torch, data)))
+
+        data_samples = ReplayBufferSamples(*tuple(map(self.to_torch, data)))
+
+        if self.use_additional_info_buffer:
+            return data_samples, [self.additional_info_buffer[ind] for ind in batch_inds]
+        return data_samples
 
 
 class RolloutBuffer(BaseBuffer):
