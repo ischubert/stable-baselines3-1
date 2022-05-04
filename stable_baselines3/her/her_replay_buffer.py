@@ -393,13 +393,19 @@ class HerReplayBuffer(DictReplayBuffer):
             # from self.desired_goal_storage
             # TODO the expand_dims solution here won't generalize to multiple environments
             if self.desired_goal_storage.use_additional_info_buffer:
-                new_obs, new_info = self.desired_goal_storage.sample(len(her_indices))
+                # Sample n_sampled_goal_preselection goals
+                # Goals are constant within one episode
+                new_obs, new_info = self.desired_goal_storage.sample(n_sampled_goal_preselection)
             else:
-                new_obs = self.desired_goal_storage.sample(len(her_indices))
+                new_obs = self.desired_goal_storage.sample(n_sampled_goal_preselection)
             new_goals = np.expand_dims(
                 new_obs.observations.cpu(),
                 axis=1
             )
+            # Repeat (within one replay, each element of the episode has same goal)
+            new_goals = np.repeat(new_goals, episode_length, axis=0)
+            if self.desired_goal_storage.use_additional_info_buffer:
+                new_info = np.repeat(new_info, episode_length, axis=0)
         else:
             new_goals = self.sample_goals(episode_indices, her_indices, transitions_indices)
 
@@ -418,7 +424,7 @@ class HerReplayBuffer(DictReplayBuffer):
             GoalSelectionStrategy.PAST_DESIRED,
             GoalSelectionStrategy.PAST_DESIRED_SUCCESS
         ] and self.desired_goal_storage.use_additional_info_buffer:
-            transitions["info"][her_indices] = np.array(new_info)
+            transitions["info"][her_indices] = new_info
 
         # # For illustration purposes: info is saved to the transition
         # # during which it is produced. If the state at the beginning
@@ -465,6 +471,7 @@ class HerReplayBuffer(DictReplayBuffer):
         if self.goal_selection_strategy == GoalSelectionStrategy.PAST_DESIRED_SUCCESS:
             assert n_sampled_goal < n_sampled_goal_preselection, "n_sampled_goal must be smaller than preselection"
             assert transitions['reward'].shape == (episode_length*n_sampled_goal_preselection, 1)
+            # irgendwie gehen hier glaube ich die episodes durcheinander, sonst haette ich nicht immer n_sampled_goal_preselection unique episode rewards
             reward_per_episode = np.sum(
                 transitions['reward'].reshape(n_sampled_goal_preselection, episode_length), axis=-1
             )
