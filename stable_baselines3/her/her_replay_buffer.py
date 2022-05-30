@@ -1,4 +1,5 @@
 import time
+import copy
 import warnings
 from collections import deque
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -420,11 +421,21 @@ class HerReplayBuffer(DictReplayBuffer):
         )
 
         # maybe overwrite info buffer with info belonging to desired goal
+        # TODO optimize/refactor
         if self.goal_selection_strategy in [
             GoalSelectionStrategy.PAST_DESIRED,
             GoalSelectionStrategy.PAST_DESIRED_SUCCESS
         ] and self.desired_goal_storage.use_additional_info_buffer:
-            transitions["info"][her_indices] = new_info
+            # deepcopy all elements of transitions independently
+            for ind, _ in enumerate(transitions["info"]):
+                transitions["info"][ind] = copy.deepcopy(transitions["info"][ind])
+            for ind, her_ind in enumerate(her_indices):
+                for key_to_copy in [
+                    "plan",
+                    "desired_goal_signature"
+                ]:
+                    # copy independent objects into transitions["info"]
+                    transitions["info"][her_ind, 0][key_to_copy] = copy.deepcopy(new_info[ind, 0][key_to_copy])
 
         # # For illustration purposes: info is saved to the transition
         # # during which it is produced. If the state at the beginning

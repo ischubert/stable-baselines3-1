@@ -5,6 +5,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type, U
 
 import cloudpickle
 import gym
+import gym.spaces
 import numpy as np
 
 # Define type aliases here to avoid circular import

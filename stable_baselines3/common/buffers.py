@@ -1,4 +1,5 @@
 import warnings
+import copy
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Generator, List, Optional, Union
 
@@ -262,7 +263,7 @@ class ReplayBuffer(BaseBuffer):
         self.dones[self.pos] = np.array(done).copy()
 
         if self.use_additional_info_buffer:
-            self.additional_info_buffer[self.pos] = infos.copy()
+            self.additional_info_buffer[self.pos] = copy.deepcopy(infos)
 
         if self.handle_timeout_termination:
             self.timeouts[self.pos] = np.array([info.get("TimeLimit.truncated", False) for info in infos])
@@ -316,7 +317,7 @@ class ReplayBuffer(BaseBuffer):
         data_samples = ReplayBufferSamples(*tuple(map(self.to_torch, data)))
 
         if self.use_additional_info_buffer:
-            return data_samples, [self.additional_info_buffer[ind] for ind in batch_inds]
+            return data_samples, [copy.deepcopy(self.additional_info_buffer[ind]) for ind in batch_inds]
         return data_samples
 
 
